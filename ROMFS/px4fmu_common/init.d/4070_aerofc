@@ -2,11 +2,11 @@
 #
 # @name Intel Aero Ready to Fly Drone
 #
-# @board px4_fmu-v2 exclude
-# @board px4_fmu-v3 exclude
-# @board px4_fmu-v4 exclude
-# @board px4_fmu-v4pro exclude
-# @board px4_fmu-v5 exclude
+# @board px4fmu-v2 exclude
+# @board px4fmu-v3 exclude
+# @board px4fmu-v4 exclude
+# @board px4fmu-v4pro exclude
+# @board px4fmu-v5 exclude
 #
 # @type Quadrotor x
 # @class Copter
@@ -19,7 +19,7 @@ sh /etc/init.d/rc.mc_defaults
 #
 # Load default params for this platform
 #
-if [ $AUTOCNF = yes ]
+if [ $AUTOCNF == yes ]
 then
 	# Set all params here, then disable autoconfig
 

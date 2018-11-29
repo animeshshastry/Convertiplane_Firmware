@@ -10,12 +10,12 @@
 #
 # @maintainer
 #
-# @board px4_fmu-v2 exclude
+# @board px4fmu-v2 exclude
 #
 
 sh /etc/init.d/rc.ugv_defaults
 
-if [ $AUTOCNF = yes ]
+if [ $AUTOCNF == yes ]
 then
 	param set BAT_N_CELLS 2
 

@@ -158,12 +158,6 @@ public:
 		return PublicationBase::update((void *)(&_data));
 	}
 
-	bool update(const T &data)
-	{
-		_data = data;
-		return update();
-	}
-
 private:
 	T _data;
 };

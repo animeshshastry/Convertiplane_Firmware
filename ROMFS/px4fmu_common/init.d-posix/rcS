@@ -5,7 +5,7 @@
 # shellcheck disable=SC1091
 . px4-alias.sh
 
-SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 #
 # Main SITL startup script
@@ -131,14 +131,6 @@ then
 	param set MPC_HOLD_MAX_Z 2.0
 	param set MPC_Z_VEL_I 0.15
 	param set MPC_Z_VEL_P 0.6
-	param set MPC_XY_P 0.8
-	param set MPC_XY_VEL_P 0.2
-	param set MPC_XY_VEL_I 0.02
-	param set MPC_XY_VEL_D 0.016
-
-	param set MPC_JERK_MIN 10.0
-	param set MPC_JERK_MAX 20.0
-	param set MPC_ACC_HOR_MAX 3.0
 
 	param set NAV_ACC_RAD 2.0
 	param set NAV_DLL_ACT 2
@@ -157,21 +149,12 @@ then
 fi
 
 # Autostart ID
-autostart_file=''
-for f in etc/init.d-posix/"$(param show -q SYS_AUTOSTART)"_*
-do
-	filename=$(basename "$f")
-	case "$filename" in
-		*\.*)
-			# ignore files that contain a dot (e.g. <vehicle>.post)
-			;;
-		*)
-			autostart_file="$f"
-			;;
-	esac
-done
+autostart_file_match="etc/init.d-posix/$(param show -q SYS_AUTOSTART)_*"
+# shellcheck disable=SC2206
+autostart_files=( $autostart_file_match )
+autostart_file="${autostart_files[0]}" # use first match, but there should really only be one
 if [ ! -e "$autostart_file" ]; then
-	echo "Error: no autostart file found ($autostart_file)"
+	echo "Error: no autostart file found"
 	exit -1
 fi
 

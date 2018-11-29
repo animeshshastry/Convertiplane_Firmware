@@ -1271,20 +1271,20 @@ Mavlink::handle_message(const mavlink_message_t *msg)
 void
 Mavlink::send_statustext_info(const char *string)
 {
-	mavlink_log_info(&_mavlink_log_pub, "%s", string);
+	mavlink_log_info(&_mavlink_log_pub, string);
 }
 
 void
 Mavlink::send_statustext_critical(const char *string)
 {
-	mavlink_log_critical(&_mavlink_log_pub, "%s", string);
-	PX4_ERR("%s", string);
+	mavlink_log_critical(&_mavlink_log_pub, string);
+	PX4_ERR(string);
 }
 
 void
 Mavlink::send_statustext_emergency(const char *string)
 {
-	mavlink_log_emergency(&_mavlink_log_pub, "%s", string);
+	mavlink_log_emergency(&_mavlink_log_pub, string);
 }
 
 void Mavlink::send_autopilot_capabilites()
@@ -1330,22 +1330,14 @@ void Mavlink::send_autopilot_capabilites()
 		board_get_uuid32(uid);
 		msg.uid = (((uint64_t)uid[PX4_CPU_UUID_WORD32_UNIQUE_M]) << 32) | uid[PX4_CPU_UUID_WORD32_UNIQUE_H];
 
-#ifndef BOARD_HAS_NO_UUID
-		px4_guid_t px4_guid;
-		board_get_px4_guid(px4_guid);
-		static_assert(sizeof(px4_guid_t) == sizeof(msg.uid2), "GUID byte length mismatch");
-		memcpy(&msg.uid2, &px4_guid, sizeof(msg.uid2));
-#endif /* BOARD_HAS_NO_UUID */
-
-#ifdef CONFIG_ARCH_BOARD_PX4_SITL
+#ifdef CONFIG_ARCH_BOARD_SITL
 		// To avoid that multiple SITL instances have the same UUID, we add the mavlink
 		// system ID. We subtract 1, so that the first UUID remains unchanged given the
 		// default system ID is 1.
 		//
 		// Note that the UUID show in `ver` will still be the same for all instances.
 		msg.uid += mavlink_system.sysid - 1;
-		msg.uid2[0] += mavlink_system.sysid - 1;
-#endif /* CONFIG_ARCH_BOARD_PX4_SITL */
+#endif
 		mavlink_msg_autopilot_version_send_struct(get_channel(), &msg);
 	}
 }
@@ -1753,7 +1745,6 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("COLLISION", unlimited_rate);
 		configure_stream_local("DEBUG", 1.0f);
 		configure_stream_local("DEBUG_VECT", 1.0f);
-		configure_stream_local("DEBUG_FLOAT_ARRAY", 1.0f);
 		configure_stream_local("DISTANCE_SENSOR", 0.5f);
 		configure_stream_local("ESTIMATOR_STATUS", 0.5f);
 		configure_stream_local("EXTENDED_SYS_STATE", 1.0f);
@@ -1773,7 +1764,6 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("SERVO_OUTPUT_RAW_0", 1.0f);
 		configure_stream_local("SYS_STATUS", 1.0f);
 		configure_stream_local("TRAJECTORY_REPRESENTATION_WAYPOINTS", 5.0f);
-		configure_stream_local("UTM_GLOBAL_POSITION", 1.0f);
 		configure_stream_local("VFR_HUD", 4.0f);
 		configure_stream_local("VISION_POSITION_ESTIMATE", 1.0f);
 		configure_stream_local("WIND_COV", 1.0f);
@@ -1792,7 +1782,6 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("COLLISION", unlimited_rate);
 		configure_stream_local("DEBUG", 10.0f);
 		configure_stream_local("DEBUG_VECT", 10.0f);
-		configure_stream_local("DEBUG_FLOAT_ARRAY", 10.0f);
 		configure_stream_local("DISTANCE_SENSOR", 10.0f);
 		configure_stream_local("ESTIMATOR_STATUS", 1.0f);
 		configure_stream_local("EXTENDED_SYS_STATE", 5.0f);
@@ -1815,7 +1804,6 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("SYSTEM_TIME", 1.0f);
 		configure_stream_local("TIMESYNC", 10.0f);
 		configure_stream_local("TRAJECTORY_REPRESENTATION_WAYPOINTS", 5.0f);
-		configure_stream_local("UTM_GLOBAL_POSITION", 1.0f);
 		configure_stream_local("VFR_HUD", 10.0f);
 		configure_stream_local("VISION_POSITION_ESTIMATE", 10.0f);
 		configure_stream_local("WIND_COV", 10.0f);
@@ -1858,7 +1846,6 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("COLLISION", unlimited_rate);
 		configure_stream_local("DEBUG", 50.0f);
 		configure_stream_local("DEBUG_VECT", 50.0f);
-		configure_stream_local("DEBUG_FLOAT_ARRAY", 50.0f);
 		configure_stream_local("DISTANCE_SENSOR", 10.0f);
 		configure_stream_local("GPS_RAW_INT", unlimited_rate);
 		configure_stream_local("GPS2_RAW", unlimited_rate);
@@ -1880,7 +1867,6 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("SYS_STATUS", 1.0f);
 		configure_stream_local("SYSTEM_TIME", 1.0f);
 		configure_stream_local("TIMESYNC", 10.0f);
-		configure_stream_local("UTM_GLOBAL_POSITION", 1.0f);
 		configure_stream_local("VFR_HUD", 20.0f);
 		configure_stream_local("VISION_POSITION_ESTIMATE", 10.0f);
 		configure_stream_local("WIND_COV", 10.0f);
@@ -2810,7 +2796,7 @@ Mavlink::display_status()
 			printf("\t  noise:\t%d\n", _rstatus.noise);
 			printf("\t  remote noise:\t%u\n", _rstatus.remote_noise);
 			printf("\t  rx errors:\t%u\n", _rstatus.rxerrors);
-			printf("\t  fixed:\t%u\n", _rstatus.fix);
+			printf("\t  fixed:\t%u\n", _rstatus.fixed);
 			break;
 
 		case telemetry_status_s::TELEMETRY_STATUS_RADIO_TYPE_USB:

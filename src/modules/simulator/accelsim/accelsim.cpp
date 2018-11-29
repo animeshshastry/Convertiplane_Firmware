@@ -45,7 +45,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <float.h>
 #include <unistd.h>
 #include <px4_getopt.h>
 #include <errno.h>
@@ -321,7 +320,7 @@ ACCELSIM::init()
 	int ret = -1;
 
 	struct mag_report mrp = {};
-	sensor_accel_s arp = {};
+	struct accel_report arp = {};
 
 	/* do SIM init first */
 	if (VirtDevObj::init() != 0) {
@@ -330,7 +329,7 @@ ACCELSIM::init()
 	}
 
 	/* allocate basic report buffers */
-	_accel_reports = new ringbuffer::RingBuffer(2, sizeof(sensor_accel_s));
+	_accel_reports = new ringbuffer::RingBuffer(2, sizeof(accel_report));
 
 	if (_accel_reports == nullptr) {
 		goto out;
@@ -410,8 +409,8 @@ ACCELSIM::transfer(uint8_t *send, uint8_t *recv, unsigned len)
 ssize_t
 ACCELSIM::devRead(void *buffer, size_t buflen)
 {
-	unsigned count = buflen / sizeof(sensor_accel_s);
-	sensor_accel_s *arb = reinterpret_cast<sensor_accel_s *>(buffer);
+	unsigned count = buflen / sizeof(struct accel_report);
+	accel_report *arb = reinterpret_cast<accel_report *>(buffer);
 	int ret = 0;
 
 	/* buffer must be large enough */
@@ -497,11 +496,23 @@ ACCELSIM::devIOCTL(unsigned long cmd, unsigned long arg)
 	case SENSORIOCSPOLLRATE: {
 			switch (ul_arg) {
 
+			/* switching to manual polling */
+			case SENSOR_POLLRATE_MANUAL:
+				stop();
+				m_sample_interval_usecs = 0;
+				return OK;
+
+			/* external signalling not supported */
+			case SENSOR_POLLRATE_EXTERNAL:
+
 			/* zero would be bad */
 			case 0:
 				return -EINVAL;
 
-			/* set default polling rate */
+			/* set default/max polling rate */
+			case SENSOR_POLLRATE_MAX:
+				return devIOCTL(SENSORIOCSPOLLRATE, 1600);
+
 			case SENSOR_POLLRATE_DEFAULT:
 				return devIOCTL(SENSORIOCSPOLLRATE, ACCELSIM_ACCEL_DEFAULT_RATE);
 
@@ -532,9 +543,36 @@ ACCELSIM::devIOCTL(unsigned long cmd, unsigned long arg)
 			}
 		}
 
+	case SENSORIOCGPOLLRATE:
+		if (m_sample_interval_usecs == 0) {
+			return SENSOR_POLLRATE_MANUAL;
+		}
+
+		return 1000000 / m_sample_interval_usecs;
+
+	case SENSORIOCSQUEUEDEPTH: {
+			/* lower bound is mandatory, upper bound is a sanity check */
+			if ((ul_arg < 1) || (ul_arg > 100)) {
+				return -EINVAL;
+			}
+
+			if (!_accel_reports->resize(ul_arg)) {
+				return -ENOMEM;
+			}
+
+			return OK;
+		}
+
 	case SENSORIOCRESET:
 		// Nothing to do for simulator
 		return OK;
+
+	case ACCELIOCSSAMPLERATE:
+		// No need to set internal sampling rate for simulator
+		return OK;
+
+	case ACCELIOCGSAMPLERATE:
+		return _accel_samplerate;
 
 	case ACCELIOCSSCALE: {
 			/* copy scale, but only if off by a few percent */
@@ -549,6 +587,19 @@ ACCELSIM::devIOCTL(unsigned long cmd, unsigned long arg)
 				return -EINVAL;
 			}
 		}
+
+	case ACCELIOCSRANGE:
+		/* arg needs to be in G */
+		return accel_set_range(ul_arg);
+
+	case ACCELIOCGRANGE:
+		/* convert to m/s^2 and return rounded in G */
+		return (unsigned long)((_accel_range_m_s2) / CONSTANTS_ONE_G + 0.5f);
+
+	case ACCELIOCGSCALE:
+		/* copy scale out */
+		memcpy((struct accel_calibration_s *) arg, &(_accel_scale), sizeof(_accel_scale));
+		return OK;
 
 	default:
 		/* give it to the superclass */
@@ -566,11 +617,21 @@ ACCELSIM::mag_ioctl(unsigned long cmd, unsigned long arg)
 	case SENSORIOCSPOLLRATE: {
 			switch (arg) {
 
+			/* switching to manual polling */
+			case SENSOR_POLLRATE_MANUAL:
+				_mag->stop();
+				_mag->m_sample_interval_usecs = 0;
+				return OK;
+
+			/* external signalling not supported */
+			case SENSOR_POLLRATE_EXTERNAL:
+
 			/* zero would be bad */
 			case 0:
 				return -EINVAL;
 
-			/* set default polling rate */
+			/* set default/max polling rate */
+			case SENSOR_POLLRATE_MAX:
 			case SENSOR_POLLRATE_DEFAULT:
 				/* 100 Hz is max for mag */
 				return mag_ioctl(SENSORIOCSPOLLRATE, 100);
@@ -599,9 +660,36 @@ ACCELSIM::mag_ioctl(unsigned long cmd, unsigned long arg)
 			}
 		}
 
+	case SENSORIOCGPOLLRATE:
+		if (_mag->m_sample_interval_usecs == 0) {
+			return SENSOR_POLLRATE_MANUAL;
+		}
+
+		return 1000000 / _mag->m_sample_interval_usecs;
+
+	case SENSORIOCSQUEUEDEPTH: {
+			/* lower bound is mandatory, upper bound is a sanity check */
+			if ((arg < 1) || (arg > 100)) {
+				return -EINVAL;
+			}
+
+			if (!_mag_reports->resize(arg)) {
+				return -ENOMEM;
+			}
+
+			return OK;
+		}
+
 	case SENSORIOCRESET:
 		// Nothing to do for simulator
 		return OK;
+
+	case MAGIOCSSAMPLERATE:
+		// No need to set internal sampling rate for simulator
+		return OK;
+
+	case MAGIOCGSAMPLERATE:
+		return _mag_samplerate;
 
 	case MAGIOCSSCALE:
 		/* copy scale in */
@@ -615,6 +703,9 @@ ACCELSIM::mag_ioctl(unsigned long cmd, unsigned long arg)
 
 	case MAGIOCSRANGE:
 		return mag_set_range(arg);
+
+	case MAGIOCGRANGE:
+		return _mag_range_ga;
 
 	case MAGIOCGEXTERNAL:
 		/* Even if this sensor is on the "external" SPI bus
@@ -715,7 +806,7 @@ ACCELSIM::_measure()
 	} raw_accel_report;
 #pragma pack(pop)
 
-	sensor_accel_s accel_report = {};
+	accel_report accel_report = {};
 
 	/* start the performance counter */
 	perf_begin(_accel_sample_perf);
@@ -757,13 +848,9 @@ ACCELSIM::_measure()
 	// whether it has had failures
 	accel_report.error_count = perf_event_count(_bad_registers) + perf_event_count(_bad_values);
 
-	if (math::isZero(_accel_range_scale)) {
-		_accel_range_scale = FLT_EPSILON;
-	}
-
-	accel_report.x_raw = math::constrainFloatToInt16(raw_accel_report.x / _accel_range_scale);
-	accel_report.y_raw = math::constrainFloatToInt16(raw_accel_report.y / _accel_range_scale);
-	accel_report.z_raw = math::constrainFloatToInt16(raw_accel_report.z / _accel_range_scale);
+	accel_report.x_raw = (int16_t)(raw_accel_report.x / _accel_range_scale);
+	accel_report.y_raw = (int16_t)(raw_accel_report.y / _accel_range_scale);
+	accel_report.z_raw = (int16_t)(raw_accel_report.z / _accel_range_scale);
 
 	accel_report.x = raw_accel_report.x;
 	accel_report.y = raw_accel_report.y;
@@ -837,17 +924,14 @@ ACCELSIM::mag_measure()
 	mag_report.device_id = 196616;
 	mag_report.is_external = false;
 
-	if (math::isZero(_mag_range_scale)) {
-		_mag_range_scale = FLT_EPSILON;
-	}
+	mag_report.x_raw = (int16_t)(raw_mag_report.x / _mag_range_scale);
+	mag_report.y_raw = (int16_t)(raw_mag_report.y / _mag_range_scale);
+	mag_report.z_raw = (int16_t)(raw_mag_report.z / _mag_range_scale);
 
-	float xraw_f = math::constrainFloatToInt16(raw_mag_report.x / _mag_range_scale);
-	float yraw_f = math::constrainFloatToInt16(raw_mag_report.y / _mag_range_scale);
-	float zraw_f = math::constrainFloatToInt16(raw_mag_report.z / _mag_range_scale);
+	float xraw_f = (int16_t)(raw_mag_report.x / _mag_range_scale);
+	float yraw_f = (int16_t)(raw_mag_report.y / _mag_range_scale);
+	float zraw_f = (int16_t)(raw_mag_report.z / _mag_range_scale);
 
-	mag_report.x_raw = xraw_f;
-	mag_report.y_raw = yraw_f;
-	mag_report.z_raw = zraw_f;
 
 	/* apply user specified rotation */
 	rotate_3f(_rotation, xraw_f, yraw_f, zraw_f);

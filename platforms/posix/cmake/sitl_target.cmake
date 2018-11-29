@@ -29,9 +29,7 @@ include(ExternalProject)
 # project to build sitl_gazebo if necessary
 ExternalProject_Add(sitl_gazebo
 	SOURCE_DIR ${PX4_SOURCE_DIR}/Tools/sitl_gazebo
-	CMAKE_ARGS
-		-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
-		-DSEND_VISION_ESTIMATION_DATA=ON
+	CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
 	BINARY_DIR ${PX4_BINARY_DIR}/build_gazebo
 	INSTALL_COMMAND ""
 	DEPENDS
@@ -90,10 +88,9 @@ foreach(viewer ${viewers})
 	endforeach()
 endforeach()
 
-string(REPLACE ";" "," posix_vmd_make_target_list "${all_posix_vmd_make_targets}")
-
+px4_join(OUT posix_vmd_make_target_list LIST ${all_posix_vmd_make_targets} GLUE "\\n")
 add_custom_target(list_vmd_make_targets
 	COMMAND sh -c "printf \"${posix_vmd_make_target_list}\\n\""
-	COMMENT "List of acceptable '${PX4_BOARD}' <viewer_model_debugger> targets:"
+	COMMENT "List of acceptable '${CONFIG}' <viewer_model_debugger> targets:"
 	VERBATIM
 	)

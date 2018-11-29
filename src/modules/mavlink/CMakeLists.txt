@@ -70,7 +70,3 @@ px4_add_module(
 		version
 	UNITY_BUILD
 	)
-
-if(PX4_TESTING)
-	add_subdirectory(mavlink_tests)
-endif()

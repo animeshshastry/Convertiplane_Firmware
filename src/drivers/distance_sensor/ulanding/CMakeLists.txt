@@ -36,8 +36,6 @@ px4_add_module(
 	COMPILE_FLAGS
 	SRCS
 		ulanding.cpp
-	MODULE_CONFIG
-		module.yaml
 	DEPENDS
 	)
 

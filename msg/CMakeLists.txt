@@ -42,10 +42,8 @@ set(msg_files
 	camera_capture.msg
 	camera_trigger.msg
 	collision_report.msg
-	collision_constraints.msg
 	commander_state.msg
 	cpuload.msg
-	debug_array.msg
 	debug_key_value.msg
 	debug_value.msg
 	debug_vect.msg

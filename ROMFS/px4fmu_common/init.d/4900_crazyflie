@@ -2,11 +2,11 @@
 #
 # @name Crazyflie 2.0
 #
-# @board px4_fmu-v2 exclude
-# @board px4_fmu-v3 exclude
-# @board px4_fmu-v4 exclude
-# @board px4_fmu-v4pro exclude
-# @board px4_fmu-v5 exclude
+# @board px4fmu-v2 exclude
+# @board px4fmu-v3 exclude
+# @board px4fmu-v4 exclude
+# @board px4fmu-v4pro exclude
+# @board px4fmu-v5 exclude
 # @board aerofc-v1 exclude
 #
 # @type Quadrotor x
@@ -15,7 +15,7 @@
 # @maintainer Dennis Shtatov <densht@gmail.com>
 #
 sh /etc/init.d/4001_quad_x
-if [ $AUTOCNF = yes ]
+if [ $AUTOCNF == yes ]
 then
 	param set BAT_N_CELLS 1
 	param set BAT_CAPACITY 240
@@ -47,6 +47,7 @@ then
 	param set MC_YAW_P 3.0
 
 	param set MPC_THR_HOVER 0.7
+	param set MPC_MANTHR_MAX 1.0
 	param set MPC_THR_MAX 1.0
 	param set MPC_Z_P 1.5
 	param set MPC_Z_VEL_I 0.3

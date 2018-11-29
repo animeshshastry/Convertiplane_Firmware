@@ -49,7 +49,7 @@ set +e
 
 #------------------------------------------------------------------------------
 #
-# UART mapping on NXP FMUK66-v3:
+# UART mapping on NXPhlitev3:
 #
 # LPUART0		/dev/ttyS0		P16 CONSOLE
 # UART0			/dev/ttyS1		P7  IR
@@ -71,7 +71,7 @@ set FEXTRAS /fs/microsd/etc/extras.txt
 set FRC /fs/microsd/etc/rc.txt
 set FMU_ARGS ""
 set FMU_MODE pwm
-set IOFW "/etc/extras/px4_io-v2_default.bin"
+set IOFW "/etc/extras/px4io-v2.bin"
 set IO_PRESENT no
 set LOG_FILE /fs/microsd/bootlog.txt
 set MAV_TYPE none
@@ -160,10 +160,10 @@ else
 fi
 
 # AEROCORE2 shouldn't have an sd card and CF2 may optionally have an sd card.
-if ! ver hwcmp BITCRAZE_CRAZYFLIE GUMSTIX_AEROCORE2
+if ! ver hwcmp CRAZYFLIE AEROCORE2
 then
 	# Run no SD alarm.
-	if [ $LOG_FILE = /dev/null ]
+	if [ $LOG_FILE == /dev/null ]
 	then
 		# tune Make FS MBAGP
 		tune_control play -t 2
@@ -214,7 +214,7 @@ else
 	#
 	# Bootloader upgrade
 	#
-	if ver hwcmp PX4_FMU_V2
+	if ver hwcmp PX4FMU_V2
 	then
 		set BL_FILE /etc/extras/px4fmuv3_bl.bin
 		if [ -f $BL_FILE ]
@@ -243,8 +243,6 @@ else
 		fi
 	fi
 
-	rgbled_ncp5623c start
-	
 	#
 	# FMUv5 may have both PWM I2C RGB LED support.
 	#
@@ -275,12 +273,12 @@ else
 	#               Begin setup for board specific configurations.                #
 	###############################################################################
 
-	if ver hwcmp GUMSTIX_AEROCORE2
+	if ver hwcmp AEROCORE2
 	then
 		set DATAMAN_OPT "-f /fs/mtd_dataman"
 	fi
 
-	if ver hwcmp INTEL_AEROFC_V1
+	if ver hwcmp AEROFC_V1
 	then
 		if param compare SYS_AUTOSTART 0
 		then
@@ -294,7 +292,7 @@ else
 		set DATAMAN_OPT -i
 	fi
 
-	if ver hwcmp BITCRAZE_CRAZYFLIE
+	if ver hwcmp CRAZYFLIE
 	then
 		if param compare SYS_AUTOSTART 0
 		then
@@ -303,7 +301,7 @@ else
 		fi
 	fi
 
-	if ver hwcmp NXP_FMUK66_V3
+	if ver hwcmp NXPHLITE_V3
 	then
 		param set SYS_FMU_TASK 1
 	fi
@@ -337,16 +335,16 @@ else
 	#
 	# If autoconfig parameter was set, reset it and save parameters.
 	#
-	if [ $AUTOCNF = yes ]
+	if [ $AUTOCNF == yes ]
 	then
 		# Run FMU as task on Pixracer and on boards with enough RAM.
-		if ver hwcmp PX4_FMU_V4 PX4_FMU_V4PRO PX4_FMU_V5
+		if ver hwcmp PX4FMU_V4 PX4FMU_V4PRO PX4FMU_V5
 		then
 			param set SYS_FMU_TASK 1
 		fi
 
 		# Disable safety switch by default on Pixracer and OmnibusF4SD.
-		if ver hwcmp PX4_FMU_V4 OMNIBUS_F4SD
+		if ver hwcmp PX4FMU_V4 OMNIBUS_F4SD
 		then
 			param set CBRK_IO_SAFETY 22027
 		fi
@@ -367,17 +365,15 @@ else
 
 	#
 	# Check if PX4IO present and update firmware if needed.
-	# Assumption IOFW set to firmware file and IO_PRESENT = no
+	# Assumption IOFW set to firware file and IO_PRESENT = no
 	#
 
 	if [ -f $IOFW ]
 	then
 		# Check for the mini using build with px4io fw file
 		# but not a px4IO
-		if ver hwtypecmp V540
+		if ! ver hwtypecmp V540
 		then
-			param set SYS_USE_IO 0
-		else
 			if px4io checkcrc ${IOFW}
 			then
 				set IO_PRESENT yes
@@ -408,7 +404,7 @@ else
 					fi
 				fi
 
-				if [ $IO_PRESENT = no ]
+				if [ $IO_PRESENT == no ]
 				then
 					echo "PX4IO update failed" >> $LOG_FILE
 					# Error tune.
@@ -426,14 +422,14 @@ else
 		set USE_IO yes
 	fi
 
-	if [ $USE_IO = yes -a $IO_PRESENT = no ]
+	if [ $USE_IO == yes -a $IO_PRESENT == no ]
 	then
 		echo "PX4IO not found" >> $LOG_FILE
 		# Error tune.
 		tune_control play -t 2
 	fi
 
-	if [ $IO_PRESENT = no -o $USE_IO = no ]
+	if [ $IO_PRESENT == no -o $USE_IO == no ]
 	then
 		rc_input start
 	fi
@@ -515,15 +511,6 @@ else
 	#
 	sh /etc/init.d/rc.serial
 
-	if ver hwcmp PX4_FMU_V4
-	then
-		# Run FrSky Telemetry on Pixracer on the FrSky port if not enabled already
-		if param compare TEL_FRSKY_CONFIG 0
-		then
-			frsky_telemetry start -d /dev/ttyS6 -t 15
-		fi
-	fi
-
 	#
 	# Configure vehicle type specific parameters.
 	# Note: rc.vehicle_setup is the entry point for rc.interface,
@@ -565,7 +552,7 @@ else
 	#
 	# Launch the flow sensor as a background task.
 	#
-	if ver hwcmp PX4_FMU_V2 PX4_FMU_V4 PX4_FMU_V4PRO AIRMIND_MINDPX_V2 PX4_FMU_V5 OMNIBUS_F4SD
+	if ver hwcmp PX4FMU_V2 PX4FMU_V4 PX4FMU_V4PRO MINDPX_V2 PX4FMU_V5 OMNIBUS_F4SD
 	then
 		px4flow start &
 	fi

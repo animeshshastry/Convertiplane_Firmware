@@ -68,8 +68,8 @@ bool FlightTaskOffboard::activate()
 {
 	bool ret = FlightTask::activate();
 	_position_setpoint = _position;
-	_velocity_setpoint.setZero();
-	_position_lock.setAll(NAN);
+	_velocity_setpoint *= 0.0f;
+	_position_lock *= NAN;
 	return ret;
 }
 
@@ -117,7 +117,7 @@ bool FlightTaskOffboard::update()
 		return true;
 
 	} else {
-		_position_lock.setAll(NAN);
+		_position_lock *= NAN;
 	}
 
 	// Takeoff
@@ -135,7 +135,7 @@ bool FlightTaskOffboard::update()
 		return true;
 
 	} else {
-		_position_lock.setAll(NAN);
+		_position_lock *= NAN;
 	}
 
 	// Land
@@ -155,7 +155,7 @@ bool FlightTaskOffboard::update()
 		return true;
 
 	} else {
-		_position_lock.setAll(NAN);
+		_position_lock *= NAN;
 	}
 
 	// IDLE

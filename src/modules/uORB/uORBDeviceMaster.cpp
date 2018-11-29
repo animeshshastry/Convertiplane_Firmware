@@ -43,6 +43,24 @@
 #include <px4_sem.hpp>
 #include <systemlib/px4_macros.h>
 
+#ifdef __PX4_NUTTX
+#define ITERATE_NODE_MAP() \
+	for (ORBMap::Node *node_iter = _node_map.top(); node_iter; node_iter = node_iter->next)
+#define INIT_NODE_MAP_VARS(node_obj, node_name_str) \
+	DeviceNode *node_obj = node_iter->node; \
+	const char *node_name_str = node_iter->node_name; \
+	UNUSED(node_name_str);
+
+#else
+#include <algorithm>
+#define ITERATE_NODE_MAP() \
+	for (const auto &node_iter : _node_map)
+#define INIT_NODE_MAP_VARS(node_obj, node_name_str) \
+	DeviceNode *node_obj = node_iter.second; \
+	const char *node_name_str = node_iter.first.c_str(); \
+	UNUSED(node_name_str);
+#endif
+
 uORB::DeviceMaster::DeviceMaster()
 {
 	px4_sem_init(&_lock, 0, 1);
@@ -103,7 +121,7 @@ uORB::DeviceMaster::advertise(const struct orb_metadata *meta, int *instance, in
 		}
 
 		/* construct the new node */
-		uORB::DeviceNode *node = new uORB::DeviceNode(meta, group_tries, devpath, priority);
+		uORB::DeviceNode *node = new uORB::DeviceNode(meta, devpath, priority);
 
 		/* if we didn't get a device, that's bad */
 		if (node == nullptr) {
@@ -121,7 +139,7 @@ uORB::DeviceMaster::advertise(const struct orb_metadata *meta, int *instance, in
 			if (ret == -EEXIST) {
 				/* if the node exists already, get the existing one and check if
 				 * something has been published yet. */
-				uORB::DeviceNode *existing_node = getDeviceNodeLocked(meta, group_tries);
+				uORB::DeviceNode *existing_node = getDeviceNodeLocked(devpath);
 
 				if ((existing_node != nullptr) && !(existing_node->is_published())) {
 					/* nothing has been published yet, lets claim it */
@@ -138,7 +156,11 @@ uORB::DeviceMaster::advertise(const struct orb_metadata *meta, int *instance, in
 
 		} else {
 			// add to the node map;.
-			_node_list.add(node);
+#ifdef __PX4_NUTTX
+			_node_map.insert(devpath, node);
+#else
+			_node_map[std::string(devpath)] = node;
+#endif
 		}
 
 		group_tries++;
@@ -162,8 +184,9 @@ void uORB::DeviceMaster::printStatistics(bool reset)
 	bool had_print = false;
 
 	lock();
+	ITERATE_NODE_MAP() {
+		INIT_NODE_MAP_VARS(node, node_name)
 
-	for (DeviceNode *node = _node_list.getHead(); node != nullptr; node = node->getSibling()) {
 		if (node->print_statistics(reset)) {
 			had_print = true;
 		}
@@ -189,8 +212,8 @@ void uORB::DeviceMaster::addNewDeviceNodes(DeviceNodeStatisticsData **first_node
 		}
 	}
 
-	for (DeviceNode *node = _node_list.getHead(); node != nullptr; node = node->getSibling()) {
-
+	ITERATE_NODE_MAP() {
+		INIT_NODE_MAP_VARS(node, node_name)
 		++num_topics;
 
 		//check if already added
@@ -232,7 +255,8 @@ void uORB::DeviceMaster::addNewDeviceNodes(DeviceNodeStatisticsData **first_node
 		}
 
 		last_node->node = node;
-
+		int node_name_len = strlen(node_name);
+		last_node->instance = (uint8_t)(node_name[node_name_len - 1] - '0');
 		size_t name_length = strlen(last_node->node->get_meta()->o_name);
 
 		if (name_length > max_topic_name_length) {
@@ -262,7 +286,7 @@ void uORB::DeviceMaster::showTop(char **topic_filter, int num_filters)
 
 	lock();
 
-	if (_node_list.getHead() == nullptr) {
+	if (_node_map.empty()) {
 		unlock();
 		PX4_INFO("no active topics");
 		return;
@@ -343,14 +367,22 @@ void uORB::DeviceMaster::showTop(char **topic_filter, int num_filters)
 
 			PX4_INFO_RAW("\033[H"); // move cursor home and clear screen
 			PX4_INFO_RAW(CLEAR_LINE "update: 1s, num topics: %i\n", num_topics);
-			PX4_INFO_RAW(CLEAR_LINE "%-*s INST #SUB #MSG #LOST #QSIZE\n", (int)max_topic_name_length - 2, "TOPIC NAME");
+#ifdef __PX4_NUTTX
+			PX4_INFO_RAW(CLEAR_LINE "%*-s INST #SUB #MSG #LOST #QSIZE\n", (int)max_topic_name_length - 2, "TOPIC NAME");
+#else
+			PX4_INFO_RAW(CLEAR_LINE "%*s INST #SUB #MSG #LOST #QSIZE\n", -(int)max_topic_name_length + 2, "TOPIC NAME");
+#endif
 			cur_node = first_node;
 
 			while (cur_node) {
 
 				if (!print_active_only || cur_node->pub_msg_delta > 0) {
-					PX4_INFO_RAW(CLEAR_LINE "%-*s %2i %4i %4i %5i %i\n", (int)max_topic_name_length,
-						     cur_node->node->get_meta()->o_name, (int)cur_node->node->get_instance(),
+#ifdef __PX4_NUTTX
+					PX4_INFO_RAW(CLEAR_LINE "%*-s %2i %4i %4i %5i %i\n", (int)max_topic_name_length,
+#else
+					PX4_INFO_RAW(CLEAR_LINE "%*s %2i %4i %4i %5i %i\n", -(int)max_topic_name_length,
+#endif
+						     cur_node->node->get_meta()->o_name, (int)cur_node->instance,
 						     (int)cur_node->node->subscriber_count(), cur_node->pub_msg_delta,
 						     (int)cur_node->lost_msg_delta, cur_node->node->get_queue_size());
 				}
@@ -379,37 +411,39 @@ void uORB::DeviceMaster::showTop(char **topic_filter, int num_filters)
 uORB::DeviceNode *uORB::DeviceMaster::getDeviceNode(const char *nodepath)
 {
 	lock();
-
-	for (DeviceNode *node = _node_list.getHead(); node != nullptr; node = node->getSibling()) {
-		if (strcmp(node->get_devname(), nodepath) == 0) {
-			unlock();
-			return node;
-		}
-	}
-
+	uORB::DeviceNode *node = getDeviceNodeLocked(nodepath);
 	unlock();
-
-	return nullptr;
-}
-
-uORB::DeviceNode *uORB::DeviceMaster::getDeviceNode(const struct orb_metadata *meta, const uint8_t instance)
-{
-	lock();
-	uORB::DeviceNode *node = getDeviceNodeLocked(meta, instance);
-	unlock();
-
 	//We can safely return the node that can be used by any thread, because
 	//a DeviceNode never gets deleted.
 	return node;
 }
 
-uORB::DeviceNode *uORB::DeviceMaster::getDeviceNodeLocked(const struct orb_metadata *meta, const uint8_t instance)
+
+#ifdef __PX4_NUTTX
+uORB::DeviceNode *uORB::DeviceMaster::getDeviceNodeLocked(const char *nodepath)
 {
-	for (DeviceNode *node = _node_list.getHead(); node != nullptr; node = node->getSibling()) {
-		if ((strcmp(node->get_name(), meta->o_name) == 0) && (node->get_instance() == instance)) {
-			return node;
-		}
+	uORB::DeviceNode *rc = nullptr;
+
+	if (_node_map.find(nodepath)) {
+		rc = _node_map.get(nodepath);
 	}
 
-	return nullptr;
+	return rc;
 }
+
+#else
+
+uORB::DeviceNode *uORB::DeviceMaster::getDeviceNodeLocked(const char *nodepath)
+{
+	uORB::DeviceNode *rc = nullptr;
+	std::string np(nodepath);
+
+	auto iter = _node_map.find(np);
+
+	if (iter != _node_map.end()) {
+		rc = iter->second;
+	}
+
+	return rc;
+}
+#endif

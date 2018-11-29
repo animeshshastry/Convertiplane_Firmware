@@ -5,14 +5,14 @@
 # @type Quadrotor x
 # @class Copter
 #
-# @board px4_fmu-v2 exclude
+# @board px4fmu-v2 exclude
 #
 # @maintainer James Goppert <james.goppert@gmail.com>
 #
 
 sh /etc/init.d/4001_quad_x
 
-if [ $AUTOCNF = yes ]
+if [ $AUTOCNF == yes ]
 then
 	param set MC_ROLL_P 8.0
 	param set MC_ROLLRATE_P 0.08

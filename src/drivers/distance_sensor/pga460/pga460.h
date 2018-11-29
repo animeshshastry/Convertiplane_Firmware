@@ -337,7 +337,7 @@ private:
 	/**
 	 * @brief Send the program command to the EEPROM to start the flash process.
 	 */
-	int flash_eeprom();
+	void flash_eeprom();
 
 	/**
 	 * @brief Writes program defined threshold defaults to the register map and checks/writes the EEPROM.
@@ -354,7 +354,7 @@ private:
 	/**
 	 * @brief Measurement is read from UART RX buffer and published to the uORB distance sensor topic.
 	 */
-	int request_results();
+	void request_results();
 
 	/**
 	 * @brief Checks the measurement from last report and sets the range distance mode (long range , short range).
@@ -365,7 +365,7 @@ private:
 	/**
 	 * @brief Commands the device to perform an ultrasonic measurement.
 	 */
-	int take_measurement(const uint8_t mode);
+	void take_measurement(const uint8_t mode);
 
 	/*
 	 * @brief Gets a temperature measurement in degrees C.
@@ -376,7 +376,7 @@ private:
 	/**
 	 * @brief Send the unlock command to the EEPROM to enable reading and writing -- not needed w/ bulk write
 	 */
-	int unlock_eeprom();
+	void unlock_eeprom();
 
 	/**
 	 * @brief Commands the device to publish the measurement results to uORB.

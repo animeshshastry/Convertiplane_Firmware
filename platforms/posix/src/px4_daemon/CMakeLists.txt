@@ -37,6 +37,6 @@ px4_add_library(px4_daemon
 		client.cpp
 		server.cpp
 		server_io.cpp
-		sock_protocol.cpp
+		pipe_protocol.cpp
 	)
 

@@ -31,6 +31,7 @@
 #
 ############################################################################
 
+
 #=============================================================================
 #
 #	Defined functions in this file
@@ -48,7 +49,8 @@
 #		* px4_os_prebuild_targets
 #
 
-include(px4_base)
+include(common/px4_base)
+list(APPEND CMAKE_MODULE_PATH ${PX4_SOURCE_DIR}/cmake/qurt)
 
 #=============================================================================
 #
@@ -105,9 +107,59 @@ endfunction()
 #	Set the qurt build flags.
 #
 #	Usage:
-#		px4_os_add_flags()
+#		px4_os_add_flags(
+#			C_FLAGS <inout-variable>
+#			CXX_FLAGS <inout-variable>
+#			OPTIMIZATION_FLAGS <inout-variable>
+#			EXE_LINKER_FLAGS <inout-variable>
+#			INCLUDE_DIRS <inout-variable>
+#			LINK_DIRS <inout-variable>
+#			DEFINITIONS <inout-variable>)
+#
+#	Input:
+#		BOARD					: flags depend on board/qurt config
+#
+#	Input/Output: (appends to existing variable)
+#		C_FLAGS					: c compile flags variable
+#		CXX_FLAGS				: c++ compile flags variable
+#		OPTIMIZATION_FLAGS			: optimization compile flags variable
+#		EXE_LINKER_FLAGS			: executable linker flags variable
+#		INCLUDE_DIRS				: include directories
+#		LINK_DIRS				: link directories
+#		DEFINITIONS				: definitions
+#
+#	Note that EXE_LINKER_FLAGS is not suitable for adding libraries because
+#	these flags are added before any of the object files and static libraries.
+#	Add libraries in src/firmware/qurt/CMakeLists.txt.
+#
+#	Example:
+#		px4_os_add_flags(
+#			C_FLAGS CMAKE_C_FLAGS
+#			CXX_FLAGS CMAKE_CXX_FLAGS
+#			OPTIMIZATION_FLAGS optimization_flags
+#			EXE_LINKER_FLAG CMAKE_EXE_LINKER_FLAGS
+#			INCLUDES <list>)
 #
 function(px4_os_add_flags)
+
+	set(inout_vars
+		C_FLAGS CXX_FLAGS OPTIMIZATION_FLAGS EXE_LINKER_FLAGS INCLUDE_DIRS LINK_DIRS DEFINITIONS)
+
+	px4_parse_function_args(
+		NAME px4_os_add_flags
+		ONE_VALUE ${inout_vars} BOARD
+		REQUIRED ${inout_vars} BOARD
+		ARGN ${ARGN})
+
+	px4_add_common_flags(
+		BOARD ${BOARD}
+		C_FLAGS ${C_FLAGS}
+		CXX_FLAGS ${CXX_FLAGS}
+		OPTIMIZATION_FLAGS ${OPTIMIZATION_FLAGS}
+		EXE_LINKER_FLAGS ${EXE_LINKER_FLAGS}
+		INCLUDE_DIRS ${INCLUDE_DIRS}
+		LINK_DIRS ${LINK_DIRS}
+		DEFINITIONS ${DEFINITIONS})
 
 	set(DSPAL_ROOT src/lib/DriverFramework/dspal)
 	include_directories(
@@ -122,24 +174,39 @@ function(px4_os_add_flags)
 		)
 
 	add_definitions(
+		-D__DF_QURT # For DriverFramework
 		-D__PX4_POSIX
 		-D__PX4_QURT
-
-		-D__DF_QURT # For DriverFramework
+		-D__QAIC_SKEL_EXPORT=__EXPORT
 		)
 
-	add_compile_options(
+	# Add the toolchain specific flags
+	set(added_c_flags
+		-Wno-unknown-warning-option
+		)
+
+	set(added_cxx_flags
+		-Wno-unknown-warning-option
+		-Wno-unreachable-code
+		)
+
+	set(added_optimization_flags
 		-fPIC
 		-fmath-errno
-
-		-Wno-unknown-warning-option
-	)
+		)
 
 	# Clear -rdynamic flag which fails for hexagon
 	set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS)
 	set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS)
 
-	set(DF_TARGET "qurt" CACHE STRING "DriverFramework target" FORCE)
+	set(DF_TARGET "qurt" PARENT_SCOPE)
+
+	# output
+	foreach(var ${inout_vars})
+		string(TOLOWER ${var} lower_var)
+		set(${${var}} ${${${var}}} ${added_${lower_var}} PARENT_SCOPE)
+		#message(STATUS "qurt: set(${${var}} ${${${var}}} ${added_${lower_var}} PARENT_SCOPE)")
+	endforeach()
 
 endfunction()
 
@@ -156,22 +223,21 @@ endfunction()
 #			)
 #
 #	Input:
-#		BOARD		: board
+#		BOARD 		: board
 #
 #	Output:
 #		OUT	: the target list
 #
 #	Example:
-#		px4_os_prebuild_targets(OUT target_list BOARD px4_fmu-v2)
+#		px4_os_prebuild_targets(OUT target_list BOARD px4fmu-v2)
 #
 function(px4_os_prebuild_targets)
 	px4_parse_function_args(
 			NAME px4_os_prebuild_targets
 			ONE_VALUE OUT BOARD
-			REQUIRED OUT
+			REQUIRED OUT BOARD
 			ARGN ${ARGN})
 
-	add_library(prebuild_targets INTERFACE)
-	add_dependencies(prebuild_targets DEPENDS uorb_headers)
-
+	add_library(${OUT} INTERFACE)
+	add_dependencies(${OUT} DEPENDS uorb_headers)
 endfunction()

@@ -61,7 +61,7 @@ type_map = {
 }
 
 type_serialize_map = {
-    'int8': 'int8_t',
+    'int8': 'char',
     'int16': 'int16_t',
     'int32': 'int32_t',
     'int64': 'int64_t',
@@ -76,20 +76,18 @@ type_serialize_map = {
 }
 
 type_idl_map = {
-    'bool': 'boolean',
-    'byte': 'octet',
-    'char': 'char',
     'int8': 'octet',
-    'uint8': 'octet',
     'int16': 'short',
-    'uint16': 'unsigned short',
     'int32': 'long',
-    'uint32': 'unsigned long',
     'int64': 'long long',
+    'uint8': 'octet',
+    'uint16': 'unsigned short',
+    'uint32': 'unsigned long',
     'uint64': 'unsigned long long',
     'float32': 'float',
     'float64': 'double',
-    'string': 'string',
+    'bool': 'boolean',
+    'char': 'char',
 }
 
 msgtype_size_map = {
@@ -348,35 +346,11 @@ def print_field_def(field):
     print('\t%s%s%s %s%s;%s' % (type_prefix, type_px4, type_appendix, field.name,
                                 array_size, comment))
 
-
-def check_available_ids(used_msg_ids_list):
-    """
-    Checks the available RTPS ID's
-    """
-    return set(list(range(0, 255))) - set(used_msg_ids_list)
-
-
 def rtps_message_id(msg_id_map, message):
     """
     Get RTPS ID of uORB message
     """
-    error_msg = ""
-
-    # check if the message has an ID set
     for dict in msg_id_map[0]['rtps']:
         if message in dict['msg']:
-            if dict['id'] is not None:
-                return dict['id']
-            else:
-                error_msg = "ID is None!"
-                break
-
-    # create list of the available IDs if it fails to get an ID
-    used_ids = list()
-    for dict in msg_id_map[0]['rtps']:
-        if dict['id'] is not None:
-            used_ids.append(dict['id'])
-
-    raise AssertionError(
-        "%s %s Please add an ID from the available pool:\n" % (message, error_msg) +
-        ", ".join('%d' % id for id in check_available_ids(used_ids)))
+            return dict['id']
+    return 0

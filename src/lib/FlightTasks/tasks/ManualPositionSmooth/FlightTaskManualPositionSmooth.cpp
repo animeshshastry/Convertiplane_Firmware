@@ -40,7 +40,7 @@
 using namespace matrix;
 
 FlightTaskManualPositionSmooth::FlightTaskManualPositionSmooth() :
-	_smoothingXY(this, Vector2f(_velocity)),
+	_smoothingXY(this, matrix::Vector2f(&_velocity(0))),
 	_smoothingZ(this, _velocity(2), _sticks(2))
 {}
 
@@ -50,14 +50,14 @@ void FlightTaskManualPositionSmooth::_updateSetpoints()
 	FlightTaskManualPosition::_updateSetpoints();
 
 	/* Smooth velocity setpoint in xy.*/
-	Vector2f vel(_velocity);
-	Vector2f vel_sp_xy(_velocity_setpoint);
+	matrix::Vector2f vel(&_velocity(0));
+	Vector2f vel_sp_xy = Vector2f(&_velocity_setpoint(0));
 	_smoothingXY.updateMaxVelocity(_constraints.speed_xy);
 	_smoothingXY.smoothVelocity(vel_sp_xy, vel, _yaw, _yawspeed_setpoint, _deltatime);
 	_velocity_setpoint(0) = vel_sp_xy(0);
 	_velocity_setpoint(1) = vel_sp_xy(1);
 
-	/* Check for xy position lock.*/
+	/* Check for altitude lock.*/
 	_updateXYlock();
 
 	/* Smooth velocity in z.*/

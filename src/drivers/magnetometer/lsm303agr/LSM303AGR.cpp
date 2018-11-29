@@ -245,11 +245,21 @@ LSM303AGR::ioctl(struct file *filp, int cmd, unsigned long arg)
 	case SENSORIOCSPOLLRATE: {
 			switch (arg) {
 
+			/* switching to manual polling */
+			case SENSOR_POLLRATE_MANUAL:
+				stop();
+				_measure_ticks = 0;
+				return OK;
+
+			/* external signalling (DRDY) not supported */
+			case SENSOR_POLLRATE_EXTERNAL:
+
 			/* zero would be bad */
 			case 0:
 				return -EINVAL;
 
-			/* set default polling rate */
+			/* set default/max polling rate */
+			case SENSOR_POLLRATE_MAX:
 			case SENSOR_POLLRATE_DEFAULT: {
 					/* do we need to start internal polling? */
 					bool want_start = (_measure_ticks == 0);
@@ -291,8 +301,23 @@ LSM303AGR::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
+	case SENSORIOCGPOLLRATE:
+		if (_measure_ticks == 0) {
+			return SENSOR_POLLRATE_MANUAL;
+		}
+
+		return 1000000 / TICK2USEC(_measure_ticks);
+
 	case SENSORIOCRESET:
 		return reset();
+
+	case MAGIOCSSAMPLERATE:
+		/* same as pollrate because device is in single measurement mode*/
+		return ioctl(filp, SENSORIOCSPOLLRATE, arg);
+
+	case MAGIOCGSAMPLERATE:
+		/* same as pollrate because device is in single measurement mode*/
+		return 1000000 / TICK2USEC(_measure_ticks);
 
 	case MAGIOCSSCALE:
 		/* set new scale factors */

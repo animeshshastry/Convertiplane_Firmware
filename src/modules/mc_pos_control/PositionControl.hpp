@@ -94,9 +94,8 @@ public:
 	/**
 	 * Update the desired setpoints.
 	 * @param setpoint a vehicle_local_position_setpoint_s structure
-	 * @return true if setpoint has updated correctly
 	 */
-	bool updateSetpoint(const vehicle_local_position_setpoint_s &setpoint);
+	void updateSetpoint(const vehicle_local_position_setpoint_s &setpoint);
 
 	/**
 	 * Set constraints that are stricter than the global limits.
@@ -166,12 +165,7 @@ protected:
 	void updateParams() override;
 
 private:
-	/**
-	 * Maps setpoints to internal-setpoints.
-	 * @return true if mapping succeeded.
-	 */
-	bool _interfaceMapping();
-
+	void _interfaceMapping(); /** maps set-points to internal member set-points */
 	void _positionController(); /** applies the P-position-controller */
 	void _velocityController(const float &dt); /** applies the PID-velocity-controller */
 

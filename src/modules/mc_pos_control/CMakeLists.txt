@@ -45,5 +45,4 @@ px4_add_module(
 		git_ecl
 		ecl_geo
 		WeatherVane
-		CollisionPrevention
 	)

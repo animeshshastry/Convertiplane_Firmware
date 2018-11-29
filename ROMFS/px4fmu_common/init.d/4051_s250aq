@@ -3,7 +3,7 @@
 # @name Spedix S250AQ
 # @url https://docs.px4.io/en/framebuild_multicopter/spedix_s250_pixracer.html
 #
-# @board px4_fmu-v2 exclude
+# @board px4fmu-v2 exclude
 #
 # @type Quadrotor asymmetric
 # @class Copter
@@ -26,7 +26,7 @@ set MAV_TYPE 2
 
 set PWM_OUT 1234
 
-if [ $AUTOCNF = yes ]
+if [ $AUTOCNF == yes ]
 then
 	param set ATT_BIAS_MAX 0.0
 

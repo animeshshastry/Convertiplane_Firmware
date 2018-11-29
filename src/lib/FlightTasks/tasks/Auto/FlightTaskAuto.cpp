@@ -124,7 +124,7 @@ bool FlightTaskAuto::_evaluateTriplets()
 	}
 
 	// Temporary target variable where we save the local reprojection of the latest navigator current triplet.
-	Vector3f tmp_target;
+	matrix::Vector3f tmp_target;
 
 	if (!PX4_ISFINITE(_sub_triplet_setpoint->get().current.lat)
 	    || !PX4_ISFINITE(_sub_triplet_setpoint->get().current.lon)) {
@@ -136,7 +136,7 @@ bool FlightTaskAuto::_evaluateTriplets()
 		} else {
 			tmp_target(0) = _lock_position_xy(0);
 			tmp_target(1) = _lock_position_xy(1);
-			_lock_position_xy.setAll(NAN);
+			_lock_position_xy *= NAN;
 		}
 
 	} else {
@@ -160,7 +160,6 @@ bool FlightTaskAuto::_evaluateTriplets()
 
 	} else {
 		_triplet_target = tmp_target;
-		_target_acceptance_radius = _sub_triplet_setpoint->get().current.acceptance_radius;
 
 		if (!PX4_ISFINITE(_triplet_target(0)) || !PX4_ISFINITE(_triplet_target(1))) {
 			// Horizontal target is not finite.
@@ -236,40 +235,43 @@ bool FlightTaskAuto::_evaluateTriplets()
 void FlightTaskAuto::_set_heading_from_mode()
 {
 
-	Vector2f v; // Vector that points towards desired location
+	matrix::Vector2f v; // Vector that points towards desired location
 
 	switch (MPC_YAW_MODE.get()) {
 
-	case 0: // Heading points towards the current waypoint.
-		v = Vector2f(_target) - Vector2f(_position);
-		break;
-
-	case 1: // Heading points towards home.
-		if (_sub_home_position->get().valid_hpos) {
-			v = Vector2f(&_sub_home_position->get().x) - Vector2f(_position);
+	case 0: { // Heading points towards the current waypoint.
+			v = Vector2f(_target(0), _target(1)) - Vector2f(_position(0), _position(1));
+			break;
 		}
 
-		break;
+	case 1: { // Heading points towards home.
+			if (_sub_home_position->get().valid_hpos) {
+				v = Vector2f(_sub_home_position->get().x, _sub_home_position->get().y) - Vector2f(&_position(0));
+			}
 
-	case 2: // Heading point away from home.
-		if (_sub_home_position->get().valid_hpos) {
-			v = Vector2f(_position) - Vector2f(&_sub_home_position->get().x);
+			break;
 		}
 
-		break;
+	case 2: { // Heading point away from home.
+			if (_sub_home_position->get().valid_hpos) {
+				v = Vector2f(&_position(0)) - Vector2f(_sub_home_position->get().x, _sub_home_position->get().y);
+			}
 
-	case 3: // Along trajectory.
-		// The heading depends on the kind of setpoint generation. This needs to be implemented
-		// in the subclasses where the velocity setpoints are generated.
-		v.setAll(NAN);
-		break;
+			break;
+		}
+
+	case 3: { // Along trajectory.
+			// The heading depends on the kind of setpoint generation. This needs to be implemented
+			// in the subclasses where the velocity setpoints are generated.
+			v *= NAN;
+		}
 	}
 
 	if (PX4_ISFINITE(v.length())) {
 		// We only adjust yaw if vehicle is outside of acceptance radius. Once we enter acceptance
 		// radius, lock yaw to current yaw.
 		// This prevents excessive yawing.
-		if (v.length() > _target_acceptance_radius) {
+		if (v.length() > NAV_ACC_RAD.get()) {
 			_compute_heading_from_2D_vector(_yaw_setpoint, v);
 			_yaw_lock = false;
 
@@ -316,13 +318,13 @@ void FlightTaskAuto::_checkAvoidanceProgress()
 	pos_control_status.timestamp = hrt_absolute_time();
 
 	// vector from previous triplet to current target
-	Vector2f prev_to_target = Vector2f(_triplet_target - _triplet_prev_wp);
+	Vector2f prev_to_target = Vector2f(_triplet_target(0) - _triplet_prev_wp(0), _triplet_target(1) - _triplet_prev_wp(1));
 	// vector from previous triplet to the vehicle projected position on the line previous-target triplet
-	Vector2f prev_to_closest_pt = _closest_pt - Vector2f(_triplet_prev_wp);
+	Vector2f prev_to_closest_pt = Vector2f(_closest_pt(0) - _triplet_prev_wp(0), _closest_pt(1) - _triplet_prev_wp(1));
 	// fraction of the previous-tagerget line that has been flown
 	const float prev_curr_travelled = prev_to_closest_pt.length() / prev_to_target.length();
 
-	Vector2f pos_to_target = Vector2f(_triplet_target - _position);
+	Vector2f pos_to_target = Vector2f(_triplet_target(0) - _position(0), _triplet_target(1) - _position(1));
 
 	if (prev_curr_travelled > 1.0f) {
 		// if the vehicle projected position on the line previous-target is past the target waypoint,
@@ -332,7 +334,7 @@ void FlightTaskAuto::_checkAvoidanceProgress()
 
 	const float pos_to_target_z = fabsf(_triplet_target(2) - _position(2));
 
-	if (pos_to_target.length() < _target_acceptance_radius && pos_to_target_z > NAV_MC_ALT_RAD.get()) {
+	if (pos_to_target.length() < NAV_ACC_RAD.get() && pos_to_target_z > NAV_MC_ALT_RAD.get()) {
 		// vehicle above or below the target waypoint
 		pos_control_status.altitude_acceptance = pos_to_target_z + 0.5f;
 	}
@@ -410,7 +412,7 @@ void FlightTaskAuto::_setDefaultConstraints()
 	}
 }
 
-Vector2f FlightTaskAuto::_getTargetVelocityXY()
+matrix::Vector2f FlightTaskAuto::_getTargetVelocityXY()
 {
 	// guard against any bad velocity values
 	const float vx = _sub_triplet_setpoint->get().current.vx;
@@ -419,22 +421,22 @@ Vector2f FlightTaskAuto::_getTargetVelocityXY()
 			      _sub_triplet_setpoint->get().current.velocity_valid;
 
 	if (velocity_valid) {
-		return Vector2f(vx, vy);
+		return matrix::Vector2f(vx, vy);
 
 	} else {
 		// just return zero speed
-		return Vector2f{};
+		return matrix::Vector2f{};
 	}
 }
 
 State FlightTaskAuto::_getCurrentState()
 {
 	// Calculate the vehicle current state based on the Navigator triplets and the current position.
-	Vector2f u_prev_to_target = Vector2f(_triplet_target - _triplet_prev_wp).unit_or_zero();
-	Vector2f pos_to_target(_triplet_target - _position);
-	Vector2f prev_to_pos(_position - _triplet_prev_wp);
+	Vector2f u_prev_to_target = Vector2f(&(_triplet_target - _triplet_prev_wp)(0)).unit_or_zero();
+	Vector2f pos_to_target = Vector2f(&(_triplet_target - _position)(0));
+	Vector2f prev_to_pos = Vector2f(&(_position - _triplet_prev_wp)(0));
 	// Calculate the closest point to the vehicle position on the line prev_wp - target
-	_closest_pt = Vector2f(_triplet_prev_wp) + u_prev_to_target * (prev_to_pos * u_prev_to_target);
+	_closest_pt = Vector2f(&_triplet_prev_wp(0)) + u_prev_to_target * (prev_to_pos * u_prev_to_target);
 
 	State return_state = State::none;
 
@@ -446,7 +448,7 @@ State FlightTaskAuto::_getCurrentState()
 		// Current position is more than cruise speed in front of previous setpoint.
 		return_state = State::previous_infront;
 
-	} else if (Vector2f(Vector2f(_position) - _closest_pt).length() > _mc_cruise_speed) {
+	} else if (Vector2f(Vector2f(&_position(0)) - _closest_pt).length() > _mc_cruise_speed) {
 		// Vehicle is more than cruise speed off track.
 		return_state = State::offtrack;
 
@@ -479,11 +481,11 @@ void FlightTaskAuto::_updateInternalWaypoints()
 			// angle = cos(x) + 1.0
 			// angle goes from 0 to 2 with 0 = large angle, 2 = small angle:   0 = PI ; 2 = PI*0
 
-			if (Vector2f(_target - _next_wp).length() > 0.001f &&
-			    (Vector2f(_target - _prev_wp).length() >  _target_acceptance_radius)) {
+			if (Vector2f(&(_target - _next_wp)(0)).length() > 0.001f &&
+			    (Vector2f(&(_target - _prev_wp)(0)).length() > NAV_ACC_RAD.get())) {
 
-				angle = Vector2f(_target - _prev_wp).unit_or_zero()
-					* Vector2f(_target - _next_wp).unit_or_zero()
+				angle = Vector2f(&(_target - _prev_wp)(0)).unit_or_zero()
+					* Vector2f(&(_target - _next_wp)(0)).unit_or_zero()
 					+ 1.0f;
 				_speed_at_target = _getVelocityFromAngle(angle);
 			}
@@ -493,7 +495,6 @@ void FlightTaskAuto::_updateInternalWaypoints()
 	case State::previous_infront: {
 			_next_wp = _triplet_target;
 			_target = _triplet_prev_wp;
-			_target_acceptance_radius = _sub_triplet_setpoint->get().previous.acceptance_radius;
 			_prev_wp = _position;
 
 			float angle = 2.0f;
@@ -501,11 +502,11 @@ void FlightTaskAuto::_updateInternalWaypoints()
 
 			// angle = cos(x) + 1.0
 			// angle goes from 0 to 2 with 0 = large angle, 2 = small angle:   0 = PI ; 2 = PI*0
-			if (Vector2f(_target - _next_wp).length() > 0.001f &&
-			    (Vector2f(_target - _prev_wp).length() > _target_acceptance_radius)) {
+			if (Vector2f(&(_target - _next_wp)(0)).length() > 0.001f &&
+			    (Vector2f(&(_target - _prev_wp)(0)).length() > NAV_ACC_RAD.get())) {
 
-				angle = Vector2f(_target - _prev_wp).unit_or_zero()
-					* Vector2f(_target - _next_wp).unit_or_zero()
+				angle = Vector2f(&(_target - _prev_wp)(0)).unit_or_zero()
+					* Vector2f(&(_target - _next_wp)(0)).unit_or_zero()
 					+ 1.0f;
 				_speed_at_target = _getVelocityFromAngle(angle);
 			}
@@ -514,7 +515,7 @@ void FlightTaskAuto::_updateInternalWaypoints()
 
 	case State::offtrack: {
 			_next_wp = _triplet_target;
-			_target = Vector3f(_closest_pt(0), _closest_pt(1), _triplet_target(2));
+			_target = matrix::Vector3f(_closest_pt(0), _closest_pt(1), _triplet_target(2));
 			_prev_wp = _position;
 
 			float angle = 2.0f;
@@ -522,11 +523,11 @@ void FlightTaskAuto::_updateInternalWaypoints()
 
 			// angle = cos(x) + 1.0
 			// angle goes from 0 to 2 with 0 = large angle, 2 = small angle:   0 = PI ; 2 = PI*0
-			if (Vector2f(_target - _next_wp).length() > 0.001f &&
-			    (Vector2f(_target - _prev_wp).length() > _target_acceptance_radius)) {
+			if (Vector2f(&(_target - _next_wp)(0)).length() > 0.001f &&
+			    (Vector2f(&(_target - _prev_wp)(0)).length() > NAV_ACC_RAD.get())) {
 
-				angle = Vector2f(_target - _prev_wp).unit_or_zero()
-					* Vector2f(_target - _next_wp).unit_or_zero()
+				angle = Vector2f(&(_target - _prev_wp)(0)).unit_or_zero()
+					* Vector2f(&(_target - _next_wp)(0)).unit_or_zero()
 					+ 1.0f;
 				_speed_at_target = _getVelocityFromAngle(angle);
 			}
@@ -543,12 +544,12 @@ void FlightTaskAuto::_updateInternalWaypoints()
 
 			// angle = cos(x) + 1.0
 			// angle goes from 0 to 2 with 0 = large angle, 2 = small angle:   0 = PI ; 2 = PI*0
-			if (Vector2f(_target - _next_wp).length() > 0.001f &&
-			    (Vector2f(_target - _prev_wp).length() > _target_acceptance_radius)) {
+			if (Vector2f(&(_target - _next_wp)(0)).length() > 0.001f &&
+			    (Vector2f(&(_target - _prev_wp)(0)).length() > NAV_ACC_RAD.get())) {
 
 				angle =
-					Vector2f(_target - _prev_wp).unit_or_zero()
-					* Vector2f(_target - _next_wp).unit_or_zero()
+					Vector2f(&(_target - _prev_wp)(0)).unit_or_zero()
+					* Vector2f(&(_target - _next_wp)(0)).unit_or_zero()
 					+ 1.0f;
 				_speed_at_target = _getVelocityFromAngle(angle);
 			}
@@ -561,7 +562,7 @@ void FlightTaskAuto::_updateInternalWaypoints()
 	}
 }
 
-bool FlightTaskAuto::_compute_heading_from_2D_vector(float &heading, Vector2f v)
+bool FlightTaskAuto::_compute_heading_from_2D_vector(float &heading, matrix::Vector2f v)
 {
 	if (PX4_ISFINITE(v.length()) && v.length() > SIGMA_NORM) {
 		v.normalize();

@@ -35,7 +35,6 @@ px4_add_library(FlightTaskUtility
 	ManualSmoothingZ.cpp
 	ManualSmoothingXY.cpp
 	StraightLine.cpp
-	VelocitySmoothing.cpp
 )
 
 target_link_libraries(FlightTaskUtility PUBLIC FlightTask)

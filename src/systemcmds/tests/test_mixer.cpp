@@ -40,7 +40,6 @@
 #include <limits>
 #include <dirent.h>
 #include <string.h>
-#include <unistd.h>
 
 #include <px4_config.h>
 #include <mixer/mixer.h>
@@ -79,7 +78,7 @@ static bool should_prearm = false;
 #endif
 #endif
 
-#if defined(CONFIG_ARCH_BOARD_PX4_SITL)
+#if defined(CONFIG_ARCH_BOARD_SITL)
 #define MIXER_PATH(_file)  "etc/mixers/"#_file
 #define MIXER_ONBOARD_PATH "etc/mixers"
 #else

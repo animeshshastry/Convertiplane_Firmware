@@ -159,7 +159,6 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_debug_key_value_pub(nullptr),
 	_debug_value_pub(nullptr),
 	_debug_vect_pub(nullptr),
-	_debug_array_pub(nullptr),
 	_gps_inject_data_pub(nullptr),
 	_command_ack_pub(nullptr),
 	_control_mode_sub(orb_subscribe(ORB_ID(vehicle_control_mode))),
@@ -342,10 +341,6 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 
 	case MAVLINK_MSG_ID_DEBUG_VECT:
 		handle_message_debug_vect(msg);
-		break;
-
-	case MAVLINK_MSG_ID_DEBUG_FLOAT_ARRAY:
-		handle_message_debug_float_array(msg);
 		break;
 
 	default:
@@ -1447,11 +1442,8 @@ MavlinkReceiver::handle_message_set_attitude_target(mavlink_message_t *msg)
 						att_sp.yaw_sp_move_rate = 0.0f;
 					}
 
-					// TODO: We assume offboard is only used for multicopters which produce thrust along the
-					// body z axis. If we want to support fixed wing as well we need to handle it differently here, e.g.
-					// in that case we should assign att_sp.thrust_body[0]
 					if (!_offboard_control_mode.ignore_thrust) { // dont't overwrite thrust if it's invalid
-						att_sp.thrust_body[2] = -set_attitude_target.thrust;
+						att_sp.thrust = set_attitude_target.thrust;
 					}
 
 					if (_att_sp_pub == nullptr) {
@@ -1475,7 +1467,7 @@ MavlinkReceiver::handle_message_set_attitude_target(mavlink_message_t *msg)
 					}
 
 					if (!_offboard_control_mode.ignore_thrust) { // dont't overwrite thrust if it's invalid
-						rates_sp.thrust_body[2] = -set_attitude_target.thrust;
+						rates_sp.thrust = set_attitude_target.thrust;
 					}
 
 					if (_rates_sp_pub == nullptr) {
@@ -1507,7 +1499,7 @@ MavlinkReceiver::handle_message_radio_status(mavlink_message_t *msg)
 		status.noise = rstatus.noise;
 		status.remote_noise = rstatus.remnoise;
 		status.rxerrors = rstatus.rxerrors;
-		status.fix = rstatus.fixed;
+		status.fixed = rstatus.fixed;
 
 		_mavlink->update_radio_status(status);
 
@@ -2050,7 +2042,7 @@ MavlinkReceiver::handle_message_hil_sensor(mavlink_message_t *msg)
 
 	/* gyro */
 	{
-		sensor_gyro_s gyro = {};
+		struct gyro_report gyro = {};
 
 		gyro.timestamp = timestamp;
 		gyro.x_raw = imu.xgyro * 1000.0f;
@@ -2071,7 +2063,7 @@ MavlinkReceiver::handle_message_hil_sensor(mavlink_message_t *msg)
 
 	/* accelerometer */
 	{
-		sensor_accel_s accel = {};
+		struct accel_report accel = {};
 
 		accel.timestamp = timestamp;
 		accel.x_raw = imu.xacc / (CONSTANTS_ONE_G / 1000.0f);
@@ -2113,7 +2105,7 @@ MavlinkReceiver::handle_message_hil_sensor(mavlink_message_t *msg)
 
 	/* baro */
 	{
-		sensor_baro_s baro = {};
+		struct baro_report baro = {};
 
 		baro.timestamp = timestamp;
 		baro.pressure = imu.abs_pressure;
@@ -2179,7 +2171,7 @@ MavlinkReceiver::handle_message_hil_gps(mavlink_message_t *msg)
 	hil_gps.eph = (float)gps.eph * 1e-2f; // from cm to m
 	hil_gps.epv = (float)gps.epv * 1e-2f; // from cm to m
 
-	hil_gps.s_variance_m_s = 0.1f;
+	hil_gps.s_variance_m_s = 1.0f;
 
 	hil_gps.vel_m_s = (float)gps.vel * 1e-2f; // from cm/s to m/s
 	hil_gps.vel_n_m_s = gps.vn * 1e-2f; // from cm to m
@@ -2192,7 +2184,6 @@ MavlinkReceiver::handle_message_hil_gps(mavlink_message_t *msg)
 	hil_gps.satellites_used = gps.satellites_visible;  //TODO: rename mavlink_hil_gps_t sats visible to used?
 
 	hil_gps.heading = NAN;
-	hil_gps.heading_offset = NAN;
 
 	if (_gps_pub == nullptr) {
 		_gps_pub = orb_advertise(ORB_ID(vehicle_gps_position), &hil_gps);
@@ -2472,7 +2463,7 @@ MavlinkReceiver::handle_message_hil_state_quaternion(mavlink_message_t *msg)
 
 	/* accelerometer */
 	{
-		sensor_accel_s accel = {};
+		struct accel_report accel = {};
 
 		accel.timestamp = timestamp;
 		accel.x_raw = hil_state.xacc / CONSTANTS_ONE_G * 1e3f;
@@ -2571,30 +2562,6 @@ void MavlinkReceiver::handle_message_debug_vect(mavlink_message_t *msg)
 	}
 }
 
-void MavlinkReceiver::handle_message_debug_float_array(mavlink_message_t *msg)
-{
-	mavlink_debug_float_array_t debug_msg;
-	debug_array_s debug_topic = {};
-
-	mavlink_msg_debug_float_array_decode(msg, &debug_msg);
-
-	debug_topic.timestamp = hrt_absolute_time();
-	debug_topic.id = debug_msg.array_id;
-	memcpy(debug_topic.name, debug_msg.name, sizeof(debug_topic.name));
-	debug_topic.name[sizeof(debug_topic.name) - 1] = '\0'; // enforce null termination
-
-	for (size_t i = 0; i < debug_array_s::ARRAY_SIZE; i++) {
-		debug_topic.data[i] = debug_msg.data[i];
-	}
-
-	if (_debug_array_pub == nullptr) {
-		_debug_array_pub = orb_advertise(ORB_ID(debug_array), &debug_topic);
-
-	} else {
-		orb_publish(ORB_ID(debug_array), _debug_array_pub, &debug_topic);
-	}
-}
-
 /**
  * Receive data from UART/UDP
  */
@@ -2661,7 +2628,7 @@ MavlinkReceiver::receive_thread(void *arg)
 
 				/* non-blocking read. read may return negative values */
 				if ((nread = ::read(fds[0].fd, buf, sizeof(buf))) < (ssize_t)character_count) {
-					const unsigned sleeptime = character_count * 1000000 / (_mavlink->get_baudrate() / 10);
+					unsigned sleeptime = (1.0f / (_mavlink->get_baudrate() / 10)) * character_count * 1000000;
 					usleep(sleeptime);
 				}
 			}

@@ -39,26 +39,19 @@
 
 #pragma once
 
-#include "FlightTaskManual.hpp"
+#include "FlightTaskManualStabilized.hpp"
 
-class FlightTaskManualAltitude : public FlightTaskManual
+class FlightTaskManualAltitude : public FlightTaskManualStabilized
 {
 public:
 	FlightTaskManualAltitude() = default;
 	virtual ~FlightTaskManualAltitude() = default;
 	bool activate() override;
 	bool updateInitialize() override;
-	bool update() override;
 
 protected:
-	void _updateHeadingSetpoints(); /**< sets yaw or yaw speed */
-	virtual void _updateSetpoints(); /**< updates all setpoints */
-	virtual void _scaleSticks(); /**< scales sticks to velocity in z */
-
-	/**
-	 * rotates vector into local frame
-	 */
-	void _rotateIntoHeadingFrame(matrix::Vector2f &vec);
+	void _updateSetpoints() override; /**< updates all setpoints */
+	void _scaleSticks() override; /**< scales sticks to velocity in z */
 
 	/**
 	 *  Check and sets for position lock.
@@ -67,15 +60,27 @@ protected:
 	 */
 	void _updateAltitudeLock();
 
-	DEFINE_PARAMETERS_CUSTOM_PARENT(FlightTaskManual,
+	DEFINE_PARAMETERS_CUSTOM_PARENT(FlightTaskManualStabilized,
 					(ParamFloat<px4::params::MPC_HOLD_MAX_Z>) MPC_HOLD_MAX_Z,
 					(ParamInt<px4::params::MPC_ALT_MODE>) MPC_ALT_MODE,
 					(ParamFloat<px4::params::MPC_HOLD_MAX_XY>) MPC_HOLD_MAX_XY,
-					(ParamFloat<px4::params::MPC_Z_P>) MPC_Z_P, /**< position controller altitude propotional gain */
-					(ParamFloat<px4::params::MPC_MAN_Y_MAX>) MPC_MAN_Y_MAX, /**< scaling factor from stick to yaw rate */
-					(ParamFloat<px4::params::MPC_MAN_TILT_MAX>) MPC_MAN_TILT_MAX /**< maximum tilt allowed for manual flight */
+					(ParamFloat<px4::params::MPC_Z_P>) MPC_Z_P
 				       )
 private:
+	uint8_t _reset_counter = 0; /**< counter for estimator resets in z-direction */
+	float _max_speed_up = 10.0f;
+	float _min_speed_down = 1.0f;
+	bool _terrain_follow{false}; /**< true when the vehicle is following the terrain height */
+	bool _terrain_hold{false}; /**< true when vehicle is controlling height above a static ground position */
+
+	/**
+	 * Distance to ground during terrain following.
+	 * If user does not demand velocity change in D-direction and the vehcile
+	 * is in terrain-following mode, then height to ground will be locked to
+	 * _dist_to_ground_lock.
+	 */
+	float _dist_to_ground_lock = NAN;
+
 	/**
 	 * Terrain following.
 	 * During terrain following, the position setpoint is adjusted
@@ -94,19 +99,4 @@ private:
 	void _respectMinAltitude();
 
 	void _respectMaxAltitude();
-
-
-	uint8_t _reset_counter = 0; /**< counter for estimator resets in z-direction */
-	float _max_speed_up = 10.0f;
-	float _min_speed_down = 1.0f;
-	bool _terrain_follow{false}; /**< true when the vehicle is following the terrain height */
-	bool _terrain_hold{false}; /**< true when vehicle is controlling height above a static ground position */
-
-	/**
-	 * Distance to ground during terrain following.
-	 * If user does not demand velocity change in D-direction and the vehcile
-	 * is in terrain-following mode, then height to ground will be locked to
-	 * _dist_to_ground_lock.
-	 */
-	float _dist_to_ground_lock = NAN;
 };

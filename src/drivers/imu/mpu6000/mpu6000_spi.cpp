@@ -42,18 +42,34 @@
  */
 
 #include <px4_config.h>
+
+#include <sys/types.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <assert.h>
+#include <debug.h>
+#include <errno.h>
+#include <unistd.h>
+
+#include <arch/board/board.h>
+
 #include <drivers/device/spi.h>
 #include <drivers/drv_accel.h>
 #include <drivers/drv_device.h>
 
 #include "mpu6000.h"
-
-#include <string.h>
+#include <board_config.h>
 
 #define DIR_READ			0x80
 #define DIR_WRITE			0x00
 
 #if defined(PX4_SPIDEV_MPU) || defined(PX4_SPIDEV_ICM_20602) || defined(PX4_SPIDEV_ICM_20689)
+#  ifdef PX4_SPI_BUS_EXT
+#    define EXTERNAL_BUS PX4_SPI_BUS_EXT
+#  else
+#    define EXTERNAL_BUS 0
+#  endif
 
 /* The MPU6000 can only handle high SPI bus speeds of 20Mhz on the sensor and
 * interrupt status registers. All other registers have a maximum 1MHz
@@ -85,13 +101,15 @@ class MPU6000_SPI : public device::SPI
 {
 public:
 	MPU6000_SPI(int bus, uint32_t device, int device_type);
-	~MPU6000_SPI() override = default;
+	virtual ~MPU6000_SPI() = default;
 
-	int	read(unsigned address, void *data, unsigned count) override;
-	int	write(unsigned address, void *data, unsigned count) override;
+	virtual int	init();
+	virtual int	read(unsigned address, void *data, unsigned count);
+	virtual int	write(unsigned address, void *data, unsigned count);
 
+	virtual int	ioctl(unsigned operation, unsigned &arg);
 protected:
-	int probe() override;
+	virtual int probe();
 
 private:
 
@@ -181,6 +199,7 @@ MPU6000_SPI_interface(int bus, int device_type, bool external_bus)
 	}
 
 	if (cs != SPIDEV_NONE(0)) {
+
 		interface = new MPU6000_SPI(bus,  cs, device_type);
 	}
 
@@ -191,18 +210,62 @@ MPU6000_SPI::MPU6000_SPI(int bus, uint32_t device, int device_type) :
 	SPI("MPU6000", nullptr, bus, device, SPIDEV_MODE3, MPU6000_LOW_SPI_BUS_SPEED),
 	_device_type(device_type)
 {
-	_device_id.devid_s.devtype = DRV_ACC_DEVTYPE_MPU6000;
+	_device_id.devid_s.devtype =  DRV_ACC_DEVTYPE_MPU6000;
+}
+
+int
+MPU6000_SPI::init()
+{
+	int ret;
+
+	ret = SPI::init();
+
+	if (ret != OK) {
+		DEVICE_DEBUG("SPI init failed");
+		return -EIO;
+	}
+
+	return OK;
+}
+
+int
+MPU6000_SPI::ioctl(unsigned operation, unsigned &arg)
+{
+	int ret;
+
+	switch (operation) {
+
+	case ACCELIOCGEXTERNAL:
+		external();
+
+	/* FALLTHROUGH */
+
+	case DEVIOCGDEVICEID:
+		return CDev::ioctl(nullptr, operation, arg);
+
+	case MPUIOCGIS_I2C:
+		return 0;
+
+	default: {
+			ret = -EINVAL;
+		}
+	}
+
+	return ret;
 }
 
 void
 MPU6000_SPI::set_bus_frequency(unsigned &reg_speed)
 {
 	/* Set the desired speed */
+
 	set_frequency(MPU6000_IS_HIGH_SPEED(reg_speed) ? _max_frequency : MPU6000_LOW_SPI_BUS_SPEED);
 
 	/* Isolate the register on return */
+
 	reg_speed = MPU6000_REG(reg_speed);
 }
+
 
 int
 MPU6000_SPI::write(unsigned reg_speed, void *data, unsigned count)
@@ -214,6 +277,7 @@ MPU6000_SPI::write(unsigned reg_speed, void *data, unsigned count)
 	}
 
 	/* Set the desired speed and isolate the register */
+
 	set_bus_frequency(reg_speed);
 
 	cmd[0] = reg_speed | DIR_WRITE;
@@ -234,25 +298,32 @@ MPU6000_SPI::read(unsigned reg_speed, void *data, unsigned count)
 
 	uint8_t *pbuff  =  count < sizeof(MPUReport) ? cmd : (uint8_t *) data ;
 
+
 	if (count < sizeof(MPUReport))  {
+
 		/* add command */
+
 		count++;
 	}
 
 	set_bus_frequency(reg_speed);
 
 	/* Set command */
+
 	pbuff[0] = reg_speed | DIR_READ ;
 
 	/* Transfer the command and get the data */
+
 	int ret = transfer(pbuff, pbuff, count);
 
 	if (ret == OK && pbuff == &cmd[0]) {
 
 		/* Adjust the count back */
+
 		count--;
 
 		/* Return the data */
+
 		memcpy(data, &cmd[1], count);
 
 	}

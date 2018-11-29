@@ -617,7 +617,7 @@ LSM303D::init()
 	}
 
 	/* allocate basic report buffers */
-	_accel_reports = new ringbuffer::RingBuffer(2, sizeof(sensor_accel_s));
+	_accel_reports = new ringbuffer::RingBuffer(2, sizeof(accel_report));
 
 	if (_accel_reports == nullptr) {
 		goto out;
@@ -654,7 +654,7 @@ LSM303D::init()
 	_accel_class_instance = register_class_devname(ACCEL_BASE_DEVICE_PATH);
 
 	/* advertise sensor topic, measure manually to initialize valid report */
-	sensor_accel_s arp;
+	struct accel_report arp;
 	_accel_reports->get(&arp);
 
 	/* measurement will have generated a report, publish */
@@ -731,8 +731,8 @@ LSM303D::probe()
 ssize_t
 LSM303D::read(struct file *filp, char *buffer, size_t buflen)
 {
-	unsigned count = buflen / sizeof(sensor_accel_s);
-	sensor_accel_s *arb = reinterpret_cast<sensor_accel_s *>(buffer);
+	unsigned count = buflen / sizeof(struct accel_report);
+	accel_report *arb = reinterpret_cast<accel_report *>(buffer);
 	int ret = 0;
 
 	/* buffer must be large enough */
@@ -816,11 +816,23 @@ LSM303D::ioctl(struct file *filp, int cmd, unsigned long arg)
 	case SENSORIOCSPOLLRATE: {
 			switch (arg) {
 
+			/* switching to manual polling */
+			case SENSOR_POLLRATE_MANUAL:
+				stop();
+				_call_accel_interval = 0;
+				return OK;
+
+			/* external signalling not supported */
+			case SENSOR_POLLRATE_EXTERNAL:
+
 			/* zero would be bad */
 			case 0:
 				return -EINVAL;
 
-			/* set default polling rate */
+			/* set default/max polling rate */
+			case SENSOR_POLLRATE_MAX:
+				return ioctl(filp, SENSORIOCSPOLLRATE, 1600);
+
 			case SENSOR_POLLRATE_DEFAULT:
 				return ioctl(filp, SENSORIOCSPOLLRATE, LSM303D_ACCEL_DEFAULT_RATE);
 
@@ -856,9 +868,40 @@ LSM303D::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
+	case SENSORIOCGPOLLRATE:
+		if (_call_accel_interval == 0) {
+			return SENSOR_POLLRATE_MANUAL;
+		}
+
+		return 1000000 / _call_accel_interval;
+
+	case SENSORIOCSQUEUEDEPTH: {
+			/* lower bound is mandatory, upper bound is a sanity check */
+			if ((arg < 1) || (arg > 100)) {
+				return -EINVAL;
+			}
+
+			irqstate_t flags = px4_enter_critical_section();
+
+			if (!_accel_reports->resize(arg)) {
+				px4_leave_critical_section(flags);
+				return -ENOMEM;
+			}
+
+			px4_leave_critical_section(flags);
+
+			return OK;
+		}
+
 	case SENSORIOCRESET:
 		reset();
 		return OK;
+
+	case ACCELIOCSSAMPLERATE:
+		return accel_set_samplerate(arg);
+
+	case ACCELIOCGSAMPLERATE:
+		return _accel_samplerate;
 
 	case ACCELIOCSSCALE: {
 			/* copy scale, but only if off by a few percent */
@@ -874,6 +917,19 @@ LSM303D::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
+	case ACCELIOCSRANGE:
+		/* arg needs to be in G */
+		return accel_set_range(arg);
+
+	case ACCELIOCGRANGE:
+		/* convert to m/s^2 and return rounded in G */
+		return (unsigned long)((_accel_range_m_s2) / CONSTANTS_ONE_G + 0.5f);
+
+	case ACCELIOCGSCALE:
+		/* copy scale out */
+		memcpy((struct accel_calibration_s *) arg, &_accel_scale, sizeof(_accel_scale));
+		return OK;
+
 	default:
 		/* give it to the superclass */
 		return SPI::ioctl(filp, cmd, arg);
@@ -888,11 +944,21 @@ LSM303D::mag_ioctl(struct file *filp, int cmd, unsigned long arg)
 	case SENSORIOCSPOLLRATE: {
 			switch (arg) {
 
+			/* switching to manual polling */
+			case SENSOR_POLLRATE_MANUAL:
+				stop();
+				_call_mag_interval = 0;
+				return OK;
+
+			/* external signalling not supported */
+			case SENSOR_POLLRATE_EXTERNAL:
+
 			/* zero would be bad */
 			case 0:
 				return -EINVAL;
 
-			/* set default polling rate */
+			/* set default/max polling rate */
+			case SENSOR_POLLRATE_MAX:
 			case SENSOR_POLLRATE_DEFAULT:
 				/* 100 Hz is max for mag */
 				return mag_ioctl(filp, SENSORIOCSPOLLRATE, 100);
@@ -924,9 +990,40 @@ LSM303D::mag_ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
+	case SENSORIOCGPOLLRATE:
+		if (_call_mag_interval == 0) {
+			return SENSOR_POLLRATE_MANUAL;
+		}
+
+		return 1000000 / _call_mag_interval;
+
+	case SENSORIOCSQUEUEDEPTH: {
+			/* lower bound is mandatory, upper bound is a sanity check */
+			if ((arg < 1) || (arg > 100)) {
+				return -EINVAL;
+			}
+
+			irqstate_t flags = px4_enter_critical_section();
+
+			if (!_mag_reports->resize(arg)) {
+				px4_leave_critical_section(flags);
+				return -ENOMEM;
+			}
+
+			px4_leave_critical_section(flags);
+
+			return OK;
+		}
+
 	case SENSORIOCRESET:
 		reset();
 		return OK;
+
+	case MAGIOCSSAMPLERATE:
+		return mag_set_samplerate(arg);
+
+	case MAGIOCGSAMPLERATE:
+		return _mag_samplerate;
 
 	case MAGIOCSSCALE:
 		/* copy scale in */
@@ -1139,7 +1236,7 @@ LSM303D::accel_set_samplerate(unsigned frequency)
 	uint8_t setbits = 0;
 	uint8_t clearbits = REG1_RATE_BITS_A;
 
-	if (frequency == 0) {
+	if (frequency == 0 || frequency == ACCEL_SAMPLERATE_DEFAULT) {
 		frequency = 1600;
 	}
 
@@ -1298,7 +1395,7 @@ LSM303D::measure()
 	} raw_accel_report;
 #pragma pack(pop)
 
-	sensor_accel_s accel_report;
+	accel_report accel_report;
 
 	/* start the performance counter */
 	perf_begin(_accel_sample_perf);
@@ -1741,6 +1838,10 @@ start(bool external_bus, enum Rotation rotation, unsigned range)
 		goto fail;
 	}
 
+	if (ioctl(fd, ACCELIOCSRANGE, range) < 0) {
+		goto fail;
+	}
+
 	fd_mag = open(LSM303D_DEVICE_PATH_MAG, O_RDONLY);
 
 	/* don't fail if open cannot be opened */
@@ -1773,7 +1874,7 @@ void
 test()
 {
 	int fd_accel = -1;
-	sensor_accel_s accel_report;
+	struct accel_report accel_report;
 	ssize_t sz;
 	int ret;
 
@@ -1785,9 +1886,9 @@ test()
 	}
 
 	/* do a simple demand read */
-	sz = read(fd_accel, &accel_report, sizeof(sensor_accel_s));
+	sz = read(fd_accel, &accel_report, sizeof(accel_report));
 
-	if (sz != sizeof(sensor_accel_s)) {
+	if (sz != sizeof(accel_report)) {
 		err(1, "immediate read failed");
 	}
 

@@ -79,20 +79,16 @@
 #include <board_config.h>
 
 /* Configuration Constants */
-#if defined PX4_SPI_BUS_EXPANSION		// crazyflie
+#ifdef PX4_SPI_BUS_EXPANSION
 #define PMW3901_BUS PX4_SPI_BUS_EXPANSION
-#elif defined PX4_SPI_BUS_EXTERNAL1		// fmu-v5
-#define PMW3901_BUS PX4_SPI_BUS_EXTERNAL1
 #else
-#error "add the required spi bus from board_config.h here"
+#define PMW3901_BUS 0
 #endif
 
-#if defined PX4_SPIDEV_EXPANSION_2		// crazyflie flow deck
+#ifdef PX4_SPIDEV_EXPANSION_2
 #define PMW3901_SPIDEV PX4_SPIDEV_EXPANSION_2
-#elif defined PX4_SPIDEV_EXTERNAL1_1		// fmu-v5 ext CS1
-#define PMW3901_SPIDEV PX4_SPIDEV_EXTERNAL1_1
 #else
-#error "add the required spi dev from board_config.h here"
+#define PMW3901_SPIDEV 0
 #endif
 
 #define PMW3901_SPI_BUS_SPEED (2000000L) // 2MHz
@@ -423,6 +419,13 @@ PMW3901::ioctl(device::file_t *filp, int cmd, unsigned long arg)
 						start();
 					}
 
+					return OK;
+				}
+
+			case SENSOR_POLLRATE_MANUAL: {
+
+					stop();
+					_measure_ticks = 0;
 					return OK;
 				}
 

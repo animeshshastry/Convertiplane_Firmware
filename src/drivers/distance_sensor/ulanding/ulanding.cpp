@@ -307,7 +307,7 @@ Radar::start()
 	ASSERT(_task_handle == -1);
 
 	/* start the task */
-	_task_handle = px4_task_spawn_cmd("ulanding_radar",
+	_task_handle = px4_task_spawn_cmd("radar",
 					  SCHED_DEFAULT,
 					  SCHED_PRIORITY_MAX - 30,
 					  800,
